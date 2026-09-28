@@ -4,7 +4,10 @@ import { join } from "path";
 
 export const ALLOWED_BOT_LOGINS = ["github-actions[bot]", "azure-sdk"];
 
-const MGMT_LABELS = ["Mgmt", "resource-manager"];
+// Plane is derived from resource-manager/data-plane, which summarize-checks reconciles
+// (adds and removes). "Mgmt" is intentionally excluded: it is written add-only by
+// package-name post-results and goes stale, which misclassified data-plane PRs (#46785).
+const MGMT_LABELS = ["resource-manager"];
 const DP_LABELS = ["data-plane"];
 
 export type LabelEntry =
