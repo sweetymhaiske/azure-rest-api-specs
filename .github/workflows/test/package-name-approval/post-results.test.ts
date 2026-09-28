@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseCommentTable } from "../../src/package-name-approval/post-results.ts";
+import {
+  parseCommentTable,
+  shouldRemoveStaleMgmtLabel,
+} from "../../src/package-name-approval/post-results.ts";
 
 // Import only the pure functions we can test without heavy mocking
 // buildCommentBody and getApprovers are the key testable units
@@ -479,6 +482,27 @@ describe("post-results", () => {
       // Should remain unchanged — already approved
       expect(result).toContain("Approved by @someone");
       expect(result).not.toContain("Approved by @other");
+    });
+  });
+
+  describe("stale Mgmt label reconciliation (#46785)", () => {
+    it("removes Mgmt when the PR is no longer management-plane", () => {
+      // A push removed the management tspconfig, so detection reports isMgmt=false,
+      // but the add-only label is still on the PR from a previous run.
+      expect(shouldRemoveStaleMgmtLabel(false, ["Mgmt", "data-plane"])).toBe(true);
+    });
+
+    it("keeps Mgmt when the PR is still management-plane", () => {
+      expect(shouldRemoveStaleMgmtLabel(true, ["Mgmt"])).toBe(false);
+    });
+
+    it("keeps Mgmt on a genuinely mixed PR (isMgmt stays true)", () => {
+      // Mixed PRs set both isMgmt and isDataPlane; isMgmt true means we do not remove it.
+      expect(shouldRemoveStaleMgmtLabel(true, ["Mgmt", "data-plane"])).toBe(false);
+    });
+
+    it("is a no-op when Mgmt is not present", () => {
+      expect(shouldRemoveStaleMgmtLabel(false, ["data-plane"])).toBe(false);
     });
   });
 });
