@@ -1,0 +1,57 @@
+---
+name: azsdk-common-generate-sdk-pipeline
+license: MIT
+metadata:
+  version: "1.0.0"
+  distribution: shared
+description: 'Run the Azure SDK generation pipeline for a release plan and create the generated SDK pull requests, for one language or for all languages. **UTILITY SKILL**. USE FOR: "run SDK generation for all languages", "generate SDK for release plan <id>", "generate SDK for release <id>", "pipeline SDK generation", "generate SDK without a local clone", "create SDK pull requests". DO NOT USE FOR: generating a single SDK locally from a local clone (use azsdk-common-generate-sdk-locally), releasing/publishing an already-generated package (use azsdk-common-sdk-release), API design review. INVOKES: azure-sdk-mcp:azsdk_get_release_plan, azure-sdk-mcp:azsdk_run_generate_sdk, azure-sdk-mcp:azsdk_get_sdk_pull_request_link.'
+compatibility: "azure-sdk-mcp server, existing release plan work item. Supports .NET, Java, JavaScript, Python, Go"
+---
+
+# Generate SDK via Pipeline
+
+This skill runs the Azure SDK generation pipeline for a release plan and produces the generated SDK pull request(s). It is the correct workflow when the user asks to generate SDKs **for all languages**, to generate **for a release plan / release ID**, or to generate **without a local clone** — none of which the local-generation workflow handles.
+
+## Triggers
+
+USE FOR: run SDK generation for all languages, generate SDK for a release plan, generate SDK for a release ID, pipeline SDK generation, generate SDK without a local clone, create SDK pull requests
+WHEN: "run SDK generation, run SDK generation for all languages for release plan <id>", "generate SDK for release plan <id>", "generate SDK for release <id>", "pipeline SDK generation", "generate SDK without a local clone"
+DO NOT USE FOR: generating a single SDK locally from a local clone (use `azsdk-common-generate-sdk-locally`); releasing or publishing an already-generated package (use `azsdk-common-sdk-release`); API design review
+
+## Rules
+
+- **Always call `azure-sdk-mcp:azsdk_run_generate_sdk`** to generate. Do **not** use `azure-sdk-mcp:azsdk_release_sdk` (that publishes an already-generated package, it does not generate) or `azure-sdk-mcp:azsdk_get_sdk_pull_request_link` / `azure-sdk-mcp:azsdk_get_pull_request` (those only retrieve links) to generate an SDK.
+- `azure-sdk-mcp:azsdk_run_generate_sdk` generates **one language per call**. To generate for **all languages**, call it **once per language** the release plan targets.
+- **Read the release plan first.** Generation consumes its saved `SpecCommitSHA`, `SpecAPIVersion`, project path and SDK release type. Pass the required plan/work item ID, project path, SDK release type (`beta` or `stable`) and language from that plan. A matching repository-relative project path needs no local clone.
+- Caller inputs are **consistency checks, not target overrides**. Optional `apiVersion` and `pullRequestNumber` must match the stored version and linked public spec PR. The SHA is read from the plan; it is not a generation parameter. Interactive and automated runs use the same stored target.
+- A missing or invalid SHA/API version must be **explicitly configured on the stored release target before generation**. Stop and explain what is missing; do not pin implicitly, select a newer PR, fall back to `main`, or compile locally to choose a version.
+- Requires the `azure-sdk-mcp` server; there is no CLI fallback for the pipeline generation workflow.
+- Private Preview release plans cannot generate SDKs via the pipeline — only the API spec PR needs to merge. If needed for validation, direct the user to generate locally via `azsdk-common-generate-sdk-locally`.
+
+## MCP Tools
+
+| Tool                                            | Purpose                                                        |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `azure-sdk-mcp:azsdk_get_release_plan`          | Fetch the release plan to determine target languages / details |
+| `azure-sdk-mcp:azsdk_run_generate_sdk`          | Run the generation pipeline (once per language)                |
+| `azure-sdk-mcp:azsdk_get_sdk_pull_request_link` | Retrieve the generated SDK pull request link after generation  |
+
+## Steps
+
+1. **Collect release plan** — Get the release plan work item ID (or release plan ID) from the user, then call `azure-sdk-mcp:azsdk_get_release_plan` to fetch it.
+2. **Determine languages** — If the user asked for "all languages", determine the languages the release plan targets (e.g. via `azure-sdk-mcp:azsdk_get_release_plan`). Otherwise use the single language requested.
+3. **Generate per language** — Check that the plan has a full 40-character hexadecimal `SpecCommitSHA` and a selected `SpecAPIVersion`. For each target language, call `azure-sdk-mcp:azsdk_run_generate_sdk` with the plan's **project path**, **SDK release type**, **language**, **work item ID** and stored **API version**. Regeneration uses this same saved target and reuses an existing open SDK PR branch; it does not select a new spec target.
+4. **Report results** — Report the pinned commit, API version and pipeline links. Preserve the tool's released/duplicate/in-progress/conflicting-plan decisions. After a queued run completes, retrieve the SDK pull request link with `azure-sdk-mcp:azsdk_get_sdk_pull_request_link`.
+
+## Examples
+
+- "Run SDK generation for all languages for release 12345"
+- "Generate the SDK for release plan 12345"
+- "Generate the Python and .NET SDKs for release 12345 using the pipeline"
+
+## Troubleshooting
+
+- If the agent tries `azsdk_release_sdk`, get-artifact, or get-service-details tools instead of generating, redirect it to `azure-sdk-mcp:azsdk_run_generate_sdk` — that is the only tool that runs the generation pipeline.
+- If the correct tool is not yet available in the session, activate/load the `azure-sdk-mcp` TypeSpec SDK toolset first, then call `azure-sdk-mcp:azsdk_run_generate_sdk`.
+- If generation fails with a missing SDK details error, ensure the release plan has SDK details populated for the language before re-running.
+- Requires the `azure-sdk-mcp` server. No CLI fallback — prompt the user to configure MCP if unavailable.
